@@ -58,8 +58,12 @@ jobs:
         push: false
         tags: ${{ env.IMAGE_NAME }}:test
         platforms: linux/amd64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: |
+          type=gha
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64
+        cache-to: |
+          type=gha,mode=max
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64,mode=max
 
   push-to-registries:
     name: Push to Container Registries
@@ -109,6 +113,12 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         platforms: linux/amd64,linux/arm64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: |
+          type=gha
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-arm64
+        cache-to: |
+          type=gha,mode=max
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-amd64,mode=max
+          type=registry,ref=ghcr.io/${{ github.repository }}:cache-arm64,mode=max
         provenance: false
