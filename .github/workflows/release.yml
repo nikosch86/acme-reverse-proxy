@@ -98,15 +98,22 @@ jobs:
         - TLS 1.3 and HTTP/2 support
         
         ### 🐳 Docker Images
-        Available on Docker Hub with semantic versioning:
-        - \`docker.io/[username]/reverse-proxy-acme:$VERSION\`
-        - \`docker.io/[username]/reverse-proxy-acme:${VERSION%.*}\` (major.minor)
-        - \`docker.io/[username]/reverse-proxy-acme:${VERSION%%.*}\` (major)
+        Available on GitHub Container Registry and Docker Hub:
+        - \`ghcr.io/nikosch86/acme-reverse-proxy:$VERSION\`
+        - \`docker.io/nikosch86/acme-reverse-proxy:$VERSION\`
         
         **Supported architectures:** linux/amd64, linux/arm64
         
+        ### 📦 Go Binaries
+        Pre-built binaries are available for:
+        - Linux (amd64, arm64)
+        - macOS (amd64, arm64) 
+        - Windows (amd64)
+        
+        Download the appropriate binary for your platform and verify with the included checksums.
+        
         ### 📚 Documentation
-        See the [README](https://github.com/${{ github.repository }}/blob/$TAG/Readme.md) for detailed usage instructions.
+        See the [README](https://github.com/${{ github.repository }}/blob/$TAG/README.md) for detailed usage instructions.
         
         ### 🔍 Verification
         Binary checksums are included in this release for verification.

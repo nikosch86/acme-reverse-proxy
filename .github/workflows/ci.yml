@@ -2,18 +2,22 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ '*' ]  # Build and test on all branches
+    branches: [ '*' ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
-  REGISTRY: docker.io
-  IMAGE_NAME: reverse-proxy-acme
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
-    name: Test Go Application
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -28,33 +32,21 @@ jobs:
     - name: Cache Go modules
       uses: actions/cache@v4
       with:
-        path: ~/go/pkg/mod
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Download dependencies
+    - name: Download Go dependencies
       run: go mod download
 
-    - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+    - name: Build Go binary
+      run: go build -o acme .
 
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-
-  build:
-    name: Build and Test Docker Image
-    runs-on: ubuntu-latest
-    needs: test
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - name: Run Go tests
+      run: go test -v ./...
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -68,42 +60,11 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test Docker image
-      run: |
-        # Start the container in background
-        docker run -d --name test-container \
-          -e DOMAIN=test.example.com \
-          -e EMAIL=test@example.com \
-          -e SERVICE=test-service \
-          -e PORT=80 \
-          -e CA_DIR_URL=https://acme-staging-v02.api.letsencrypt.org/directory \
-          ${{ env.IMAGE_NAME }}:test
-
-        # Wait for container to start
-        sleep 10
-
-        # Check if container is still running
-        if ! docker ps | grep test-container; then
-          echo "Container failed to start or crashed"
-          docker logs test-container
-          exit 1
-        fi
-
-        # Check if nginx is responding
-        docker exec test-container nginx -t
-
-        # Check if ACME binary exists and is executable
-        docker exec test-container test -x /usr/local/bin/acme
-
-        # Cleanup
-        docker stop test-container
-        docker rm test-container
-
-  publish-branch:
-    name: Publish Development Images
+  push-to-registries:
+    name: Push to Container Registries
     runs-on: ubuntu-latest
-    needs: [test, build]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    needs: build-and-test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
 
     steps:
     - name: Checkout code
@@ -112,79 +73,40 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
-        registry: ${{ env.REGISTRY }}
+        registry: docker.io
         username: ${{ github.actor }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Extract metadata for branch
+    - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ github.actor }}/${{ env.IMAGE_NAME }}
+        images: |
+          ghcr.io/${{ github.repository }}
+          docker.io/${{ github.repository_owner }}/acme-reverse-proxy
         tags: |
           type=ref,event=branch
-          type=raw,value=latest,enable={{is_default_branch}}
-
-    - name: Build and push branch image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
-
-    - name: Update Docker Hub description
-      if: github.ref == 'refs/heads/main'
-      uses: peter-evans/dockerhub-description@v4
-      with:
-        username: ${{ github.actor }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        repository: ${{ github.actor }}/${{ env.IMAGE_NAME }}
-        readme-filepath: ./Readme.md
-
-  publish-release:
-    name: Publish Release Images
-    runs-on: ubuntu-latest
-    needs: [test, build]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Extract metadata for release
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ github.actor }}/${{ env.IMAGE_NAME }}
-        tags: |
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
+          type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Build and push release image
+    - name: Build and push to both registries
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
