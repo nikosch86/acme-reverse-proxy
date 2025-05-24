@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -74,7 +78,7 @@ jobs:
       with:
         images: |
           ghcr.io/${{ github.repository }}
-          docker.io/${{ github.actor }}/reverse-proxy-acme
+          docker.io/${{ github.repository_owner }}/acme-reverse-proxy
         tags: |
           type=ref,event=branch
           type=semver,pattern={{version}}
