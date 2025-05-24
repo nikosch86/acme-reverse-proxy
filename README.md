@@ -1,10 +1,50 @@
-# nginx based reverse proxy with automatic ACME certificate generation using any CA supporting ACME protocol
+# nginx Reverse Proxy with Automatic ACME Certificate Management
+
+[![CI/CD](https://github.com/nikosch86/acme-reverse-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/nikosch86/acme-reverse-proxy/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/nikosch86/acme-reverse-proxy/actions/workflows/security.yml/badge.svg)](https://github.com/nikosch86/acme-reverse-proxy/actions/workflows/security.yml)
 
 This Docker image provides an nginx reverse proxy with automatic SSL certificate management using the ACME protocol (Let's Encrypt or any ACME-compliant CA). It combines a Go-based ACME client with nginx to automatically obtain, validate, and renew SSL certificates.
 
+## Container Images
+
+**GitHub Container Registry:**
+```bash
+docker pull ghcr.io/nikosch86/acme-reverse-proxy:latest
+```
+
+**Docker Hub:**
+```bash
+docker pull nikosch86/acme-reverse-proxy:latest
+```
+
+**Available Tags:**
+- `latest` - Latest stable release from main branch
+- `main` - Latest main branch build
+- `develop` - Latest develop branch build  
+- `v1.2.3` - Specific version releases
+
 ## Quick Start
 
-See the included `docker-compose.yml` for a complete example:
+### Using Pre-built Images
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites:/etc/nginx/sites:ro
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      SERVICE: backend-service
+      PORT: 3000
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+```
+
+### Building Locally
 
 ```yaml
 services:
@@ -138,16 +178,88 @@ include /etc/nginx/conf.d/ssl.conf;
 
 ## Development
 
-**Build and test:**
+### Prerequisites
+- Go 1.24+
+- Docker & Docker Compose
+
+### Build and Test
+
+**Manual commands:**
 ```bash
-go test                              # Run tests
+go test -v ./...                     # Run all tests
+go test -short -v ./...              # Run tests (skip slow ones)
 go build -o acme .                   # Build binary
-docker build -t reverse-proxy-acme . # Build image
+docker build -t acme-reverse-proxy . # Build image
 docker-compose up                    # Run complete stack
 ```
 
-**Certificate monitoring:**
-- Certificates are checked every `RENEWAL_SECONDS`
-- Renewal occurs when expiry is within `EXPIRY_DAYS_THRESHOLD` days
-- Logs provide detailed information about certificate status
+### Testing
+
+The project includes test coverage:
+
+- **Unit Tests**: Component testing for core functionality
+- **Security Tests**: Automated vulnerability scanning via GitHub Actions
+
+Test the application:
+```bash
+go test -v ./...             # Run all tests
+go test -short -v ./...      # Run tests (skip slow ones)
+```
+
+## CI/CD & Automation
+
+### GitHub Actions Workflows
+
+- **CI/CD Pipeline**: Automated testing, building, and publishing
+  - Tests run on every branch push
+  - Docker images published to GitHub Container Registry and Docker Hub
+  - Multi-architecture builds (linux/amd64, linux/arm64)
+  - Comprehensive caching for faster builds
+
+- **Security Scanning**: Automated vulnerability detection
+  - Go dependency scanning with `govulncheck`
+  - Filesystem security scanning with Trivy
+  - Results uploaded to GitHub Security tab
+
+- **Dependabot**: Automated dependency updates
+  - Weekly updates for Go modules, Docker images, and GitHub Actions
+  - Automatic PR creation with changelogs
+
+### Container Registry Publishing
+
+Images are automatically published on:
+- **Pushes to main/develop**: Branch-tagged images
+- **Version tags**: Semantic versioned releases (v1.2.3 → 1.2.3, 1.2, 1)
+
+### Development Workflow
+
+1. Create feature branch from `develop`
+2. Make changes and add tests
+3. Run `go test -v ./...` to ensure tests pass
+4. Create PR to `develop` branch
+5. CI automatically tests and validates
+6. Merge to `develop` for testing builds
+7. Merge to `main` for stable releases
+8. Create version tags for releases
+
+## Certificate Monitoring
+
+- Certificates are checked every `RENEWAL_SECONDS` (default: 24 hours)
+- Renewal occurs when expiry is within `EXPIRY_DAYS_THRESHOLD` days (default: 30)
+- Comprehensive logging provides detailed certificate status information
+- Automatic nginx reload after certificate updates
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Run the test suite: `go test -v ./...`
+5. Ensure tests pass and code builds
+6. Commit with clear messages
+7. Push and create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
