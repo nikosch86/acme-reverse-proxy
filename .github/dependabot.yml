@@ -8,8 +8,6 @@ updates:
       day: "monday"
       time: "06:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "@hoffmann"
     commit-message:
       prefix: "deps"
       prefix-development: "deps-dev"
@@ -23,8 +21,6 @@ updates:
       day: "monday"
       time: "06:30"
     open-pull-requests-limit: 5
-    reviewers:
-      - "@hoffmann"
     commit-message:
       prefix: "docker"
       include: "scope"
@@ -37,8 +33,6 @@ updates:
       day: "monday"
       time: "07:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "@hoffmann"
     commit-message:
       prefix: "ci"
       include: "scope"
