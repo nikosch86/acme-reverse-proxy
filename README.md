@@ -7,42 +7,6 @@ This Docker image provides an nginx reverse proxy with automatic SSL certificate
 
 ## Installation
 
-### Pre-built Binaries
-
-Download the latest release for your platform from [GitHub Releases](https://github.com/nikosch86/acme-reverse-proxy/releases):
-
-**Linux:**
-```bash
-# AMD64
-wget https://github.com/nikosch86/acme-reverse-proxy/releases/latest/download/acme-linux-amd64
-chmod +x acme-linux-amd64
-sudo mv acme-linux-amd64 /usr/local/bin/acme
-
-# ARM64
-wget https://github.com/nikosch86/acme-reverse-proxy/releases/latest/download/acme-linux-arm64
-chmod +x acme-linux-arm64
-sudo mv acme-linux-arm64 /usr/local/bin/acme
-```
-
-**macOS:**
-```bash
-# Intel
-wget https://github.com/nikosch86/acme-reverse-proxy/releases/latest/download/acme-darwin-amd64
-chmod +x acme-darwin-amd64
-sudo mv acme-darwin-amd64 /usr/local/bin/acme
-
-# Apple Silicon
-wget https://github.com/nikosch86/acme-reverse-proxy/releases/latest/download/acme-darwin-arm64
-chmod +x acme-darwin-arm64
-sudo mv acme-darwin-arm64 /usr/local/bin/acme
-```
-
-**Windows:**
-```powershell
-# Download acme-windows-amd64.exe from releases page
-# Add to PATH or place in desired location
-```
-
 ### Container Images
 
 **GitHub Container Registry:**
@@ -71,23 +35,7 @@ go build -o acme .
 
 ## Quick Start
 
-### Using Standalone Binary
-
-Once you've installed the `acme` binary, you can run it directly:
-
-```bash
-# Set required environment variables
-export DOMAIN=example.com
-export EMAIL=admin@example.com
-export CA_DIR_URL=https://acme-v02.api.letsencrypt.org/directory
-
-# Run the ACME client
-acme
-```
-
-**Note:** The standalone binary is designed to work with nginx. Ensure nginx is installed and properly configured, or use the Docker image for a complete solution.
-
-### Using Pre-built Images
+### Using Docker Images
 
 ```yaml
 services:
@@ -293,12 +241,10 @@ go test -short -v ./...      # Run tests (skip slow ones)
 - **Pushes to main/develop**: Branch-tagged images
 - **Version tags**: Semantic versioned releases (v1.2.3 → 1.2.3, 1.2, 1)
 
-**GitHub Releases** are automatically created on:
-- **Version tags**: Creates releases with:
-  - Pre-built Go binaries for Linux, macOS, Windows (multiple architectures)
-  - SHA256 checksums for verification
-  - Release notes with Docker image information
-  - Links to documentation
+**Version Tags** automatically:
+- Create semantic versioned Docker images (v1.2.3 → 1.2.3, 1.2, 1)
+- Update `latest` tag for stable releases
+- Trigger multi-architecture builds
 
 ### Development Workflow
 
