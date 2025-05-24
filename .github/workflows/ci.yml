@@ -57,6 +57,7 @@ jobs:
         context: .
         push: false
         tags: ${{ env.IMAGE_NAME }}:test
+        platforms: linux/amd64
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -110,3 +111,4 @@ jobs:
         platforms: linux/amd64,linux/arm64
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        provenance: false
