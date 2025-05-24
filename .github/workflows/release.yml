@@ -131,4 +131,4 @@ jobs:
         prerelease: ${{ needs.validate-tag.outputs.is_prerelease }}
         generate_release_notes: true  # Auto-generate release notes from commits
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
