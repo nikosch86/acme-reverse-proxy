@@ -1,0 +1,13 @@
+services:
+  reverse-proxy:
+    build: .
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites:/etc/nginx/sites:ro
+    environment:
+      DOMAIN: isTheMarketOpen.sig40.com
+      EMAIL: admin@nkdev.io
+      NO_HTTP_SERVICE: true
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory

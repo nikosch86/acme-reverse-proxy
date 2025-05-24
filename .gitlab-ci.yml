@@ -1,0 +1,7 @@
+include:
+  - component: $CI_SERVER_FQDN/ci-templates/docker-build/build-push@v0.0.9
+    inputs:
+      tags:
+        - docker
+        - virtex
+      default_branch: main
