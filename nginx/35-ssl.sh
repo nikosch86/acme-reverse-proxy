@@ -1,19 +1,9 @@
 #!/bin/sh
 
-SERVICE=${SERVICE:-service}
-PORT=${PORT:-80}
 RENEWAL_SECONDS=${RENEWAL_SECONDS:-86400}
 
-if [ -z "$NO_HTTP_SERVICE" ]; then
-    # Replace __SERVICE__ with the value of SERVICE
-    sed -i "s/__SERVICE__/$SERVICE/g" /etc/nginx/conf.d/reverse-proxy.conf
-
-    # Replace __PORT__ with the value of PORT
-    sed -i "s/__PORT__/$PORT/g" /etc/nginx/conf.d/reverse-proxy.conf
-else
-    # Remove the default http reverse-proxy config
-    rm -f /etc/nginx/conf.d/reverse-proxy.conf
-fi
+# Generate nginx configuration based on services
+/usr/local/bin/generate_nginx_config
 
 
 run_acme() {

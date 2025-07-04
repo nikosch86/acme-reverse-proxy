@@ -1,0 +1,84 @@
+services:
+  # Reverse proxy with subdomain-based routing
+  reverse-proxy:
+    build: .
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl-certs:/etc/ssl/private
+    environment:
+      # ACME configuration
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      CA_DIR_URL: https://acme-staging-v02.api.letsencrypt.org/directory
+      
+      # Subdomain-based routing configuration
+      ROUTING_MODE: subdomain
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: metrics
+      PORT_3: 9000
+    depends_on:
+      - api
+      - web
+      - metrics
+    extra_hosts:
+      # For local testing - add to /etc/hosts:
+      # 127.0.0.1 example.com api.example.com web.example.com metrics.example.com
+      - "api.example.com:127.0.0.1"
+      - "web.example.com:127.0.0.1"
+      - "metrics.example.com:127.0.0.1"
+
+  # Example API service
+  api:
+    image: ealen/echo-server:latest
+    environment:
+      PORT: 8080
+      LOGS__IGNORE__PING: "true"
+      ENABLE__HOST: "true"
+      ENABLE__HTTP: "true"
+      ENABLE__REQUEST: "true"
+      ENABLE__HEADER: "true"
+      ENABLE__ENVIRONMENT: "false"
+      ENABLE__COOKIES: "false"
+      ENABLE__FILE: "false"
+    expose:
+      - "8080"
+
+  # Example web service
+  web:
+    image: ealen/echo-server:latest
+    environment:
+      PORT: 3000
+      LOGS__IGNORE__PING: "true"
+      ENABLE__HOST: "true"
+      ENABLE__HTTP: "true"
+      ENABLE__REQUEST: "true"
+      ENABLE__HEADER: "true"
+      ENABLE__ENVIRONMENT: "false"
+      ENABLE__COOKIES: "true"
+      ENABLE__FILE: "false"
+    expose:
+      - "3000"
+
+  # Example metrics service
+  metrics:
+    image: ealen/echo-server:latest
+    environment:
+      PORT: 9000
+      LOGS__IGNORE__PING: "true"
+      ENABLE__HOST: "true"
+      ENABLE__HTTP: "true"
+      ENABLE__REQUEST: "false"
+      ENABLE__HEADER: "false"
+      ENABLE__ENVIRONMENT: "true"
+      ENABLE__COOKIES: "false"
+      ENABLE__FILE: "false"
+    expose:
+      - "9000"
+
+volumes:
+  ssl-certs:

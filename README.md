@@ -35,7 +35,7 @@ go build -o acme .
 
 ## Quick Start
 
-### Using Docker Images
+### Single Service Configuration
 
 ```yaml
 services:
@@ -51,6 +51,51 @@ services:
       EMAIL: admin@example.com
       SERVICE: backend-service
       PORT: 3000
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+```
+
+### Multi-Service Configuration (Path-based)
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multiple services with path-based routing (default)
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: metrics
+      PORT_3: 9000
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+```
+
+### Multi-Service Configuration (Subdomain-based)
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multiple services with subdomain-based routing
+      ROUTING_MODE: subdomain
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: metrics
+      PORT_3: 9000
       CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
 ```
 
@@ -81,8 +126,11 @@ services:
 - `DOMAIN` - Primary domain name for certificate generation (mandatory)
 
 **Optional:**
-- `SERVICE` - Backend service name for reverse proxy, defaults to `service`
-- `PORT` - Backend service port, defaults to `80`
+- `SERVICE` - Backend service name for reverse proxy (single service mode), defaults to `service`
+- `PORT` - Backend service port (single service mode), defaults to `80`
+- `SERVICE_1`, `SERVICE_2`, ... - Backend service names for multi-service mode
+- `PORT_1`, `PORT_2`, ... - Backend service ports for multi-service mode
+- `ROUTING_MODE` - Routing mode: `path` (default) or `subdomain`
 - `EMAIL` - Email for ACME account registration, defaults to `admin@dev.lan`
 - `SAN` - Subject Alternative Names (comma-separated), defaults to empty
 - `EXPIRY_DAYS_THRESHOLD` - Certificate renewal threshold in days, defaults to `30`
@@ -98,10 +146,30 @@ services:
 
 ### Method 1: Simple Environment Variables (Default)
 
-For basic use cases, simply set `DOMAIN`, `SERVICE`, and `PORT`. The system will:
+**Single Service Mode:**
+Set `DOMAIN`, `SERVICE`, and `PORT`. The system will:
 1. Generate certificates for the specified domain
-2. Configure nginx to proxy requests to `http://SERVICE:PORT`
+2. Configure nginx to proxy all requests to `http://SERVICE:PORT`
 3. Use the default reverse proxy template with SSL enabled
+
+**Multi-Service Mode (Path-based - Default):**
+Set `DOMAIN` and numbered service variables (`SERVICE_1`, `PORT_1`, etc.). The system will:
+1. Generate certificates for the specified domain
+2. Configure nginx with path-based routing:
+   - `/service1/` → `http://service1:port1/`
+   - `/service2/` → `http://service2:port2/`
+   - `/` → First service (default route)
+3. Automatically generate the nginx configuration
+
+**Multi-Service Mode (Subdomain-based):**
+Set `DOMAIN`, `ROUTING_MODE=subdomain`, and numbered service variables. The system will:
+1. Generate certificates for the domain and all service subdomains
+2. Configure nginx with subdomain-based routing:
+   - `service1.example.com` → `http://service1:port1`
+   - `service2.example.com` → `http://service2:port2`
+   - `example.com` → First service (default)
+3. Automatically include all subdomains in the certificate
+4. Validate service names are valid for subdomains (lowercase, numbers, hyphens only)
 
 ### Method 2: Custom Site Configurations
 
@@ -185,6 +253,27 @@ include /etc/nginx/conf.d/ssl.conf;
 /usr/share/nginx/challenge/  # ACME challenge directory
 /etc/ssl/private/           # Certificate storage
 ```
+
+## Multi-Service Examples
+
+### Path-based Routing (Default)
+See `docker-compose-multi-service.yml` for a complete example with three services:
+- API service on `/api/` (echo-server)
+- Web service on `/web/` (echo-server with request/header info)
+- Metrics service on `/metrics/` (echo-server with environment info)
+
+### Subdomain-based Routing
+See `docker-compose-subdomain.yml` for a complete example with three services:
+- API service on `api.example.com` (echo-server)
+- Web service on `web.example.com` (echo-server with request/header info)
+- Metrics service on `metrics.example.com` (echo-server with environment info)
+
+The multi-service mode automatically:
+- Detects numbered environment variables (SERVICE_1, PORT_1, etc.)
+- Generates appropriate routing configuration based on ROUTING_MODE
+- Routes the root path `/` or base domain to the first service
+- Stops reading at the first gap in numbering
+- For subdomain mode: validates service names and generates certificates for all domains
 
 ## Development
 

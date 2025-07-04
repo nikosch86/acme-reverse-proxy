@@ -3,15 +3,17 @@ FROM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-COPY *go .
-RUN go test
-RUN go build -o acme .
+COPY *.go ./
+RUN go test -v ./...
+RUN go build -o acme acme.go services.go
+RUN go build -o generate_nginx_config generate_nginx_config.go services.go
 
 FROM nginx:1.27-alpine
 
 WORKDIR /root/
 
 COPY --from=builder /app/acme /usr/local/bin/acme
+COPY --from=builder /app/generate_nginx_config /usr/local/bin/generate_nginx_config
 
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 COPY nginx/http.conf /etc/nginx/http.conf

@@ -160,7 +160,29 @@ func run(ctx context.Context, cfg *Config) error {
 
 func getDomains(cfg *Config) []string {
     domains := []string{cfg.Domain}
-    return append(domains, cfg.SAN...)
+    domains = append(domains, cfg.SAN...)
+    
+    // Check if we need to add subdomains for services
+    servicesConfig := loadServicesConfig()
+    if servicesConfig.RoutingMode == RoutingModeSubdomain && servicesConfig.Domain == cfg.Domain {
+        // Add subdomain for each service
+        for _, service := range servicesConfig.Services {
+            subdomain := fmt.Sprintf("%s.%s", service.Name, cfg.Domain)
+            // Check if subdomain is not already in the list
+            found := false
+            for _, d := range domains {
+                if d == subdomain {
+                    found = true
+                    break
+                }
+            }
+            if !found {
+                domains = append(domains, subdomain)
+            }
+        }
+    }
+    
+    return domains
 }
 
 func checkCertificateExpiration(certPath string, domains []string, expiryDaysThreshold int) (bool, error) {
