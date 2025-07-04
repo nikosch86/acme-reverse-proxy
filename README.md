@@ -30,7 +30,12 @@ docker pull nikosch86/acme-reverse-proxy:latest
 ```bash
 git clone https://github.com/nikosch86/acme-reverse-proxy.git
 cd acme-reverse-proxy
+
+# Build ACME binary
 go build -o acme .
+
+# Build nginx config generator
+go build -tags config_gen -o generate_nginx_config .
 ```
 
 ## Quick Start
@@ -285,24 +290,26 @@ The multi-service mode automatically:
 
 **Manual commands:**
 ```bash
-go test -v ./...                     # Run all tests
-go test -short -v ./...              # Run tests (skip slow ones)
-go build -o acme .                   # Build binary
+go test                              # Run comprehensive test suite
+go build -o acme .                  # Build ACME binary
+go build -tags config_gen -o generate_nginx_config . # Build config generator
 docker build -t acme-reverse-proxy . # Build image
 docker-compose up                    # Run complete stack
 ```
 
 ### Testing
 
-The project includes test coverage:
+The project includes comprehensive test coverage:
 
-- **Unit Tests**: Component testing for core functionality
+- **Services Tests**: 100% coverage of routing and configuration logic
+- **ACME Tests**: Core certificate management functionality  
+- **Integration Tests**: End-to-end functionality validation
 - **Security Tests**: Automated vulnerability scanning via GitHub Actions
 
 Test the application:
 ```bash
-go test -v ./...             # Run all tests
-go test -short -v ./...      # Run tests (skip slow ones)
+go test                              # Run comprehensive test suite
+go test -v                           # Run tests with verbose output
 ```
 
 ## CI/CD & Automation
@@ -339,7 +346,7 @@ go test -short -v ./...      # Run tests (skip slow ones)
 
 1. Create feature branch from `develop`
 2. Make changes and add tests
-3. Run `go test -v ./...` to ensure tests pass
+3. Run `go test` to ensure tests pass
 4. Create PR to `develop` branch
 5. CI automatically tests and validates
 6. Merge to `develop` for testing builds
@@ -358,7 +365,7 @@ go test -short -v ./...      # Run tests (skip slow ones)
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`
 3. Make your changes and add tests
-4. Run the test suite: `go test -v ./...`
+4. Run the test suite: `go test`
 5. Ensure tests pass and code builds
 6. Commit with clear messages
 7. Push and create a Pull Request

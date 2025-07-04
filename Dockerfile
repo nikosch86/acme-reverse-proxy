@@ -4,9 +4,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
-RUN go test -v ./...
-RUN go build -o acme acme.go services.go
-RUN go build -o generate_nginx_config generate_nginx_config.go services.go
+RUN go test
+RUN go build -o acme .
+RUN go build -tags config_gen -o generate_nginx_config .
 
 FROM nginx:1.27-alpine
 

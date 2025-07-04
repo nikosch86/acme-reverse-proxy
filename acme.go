@@ -1,3 +1,5 @@
+//go:build !config_gen
+
 package main
 
 // This script is created with the help of Anthropic Claude 3.5 Sonnet

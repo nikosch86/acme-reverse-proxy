@@ -1,3 +1,5 @@
+//go:build config_gen
+
 package main
 
 import (
