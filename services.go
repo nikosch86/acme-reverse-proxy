@@ -175,33 +175,52 @@ func generateNginxConfig(config ServicesConfig) string {
 
 // generatePathConfig generates path-based routing configuration
 func generatePathConfig(config ServicesConfig) string {
+	if len(config.Services) == 0 {
+		return ""
+	}
+
+	result := ""
+
+	// Generate upstream blocks for each service
+	for _, service := range config.Services {
+		result += fmt.Sprintf(`upstream %s_upstream {
+    server %s:%s max_fails=3 fail_timeout=30s;
+}
+
+`, service.Name, service.Name, service.Port)
+	}
+
 	// If only one service, generate simple proxy config
 	if len(config.Services) == 1 {
 		service := config.Services[0]
-		return fmt.Sprintf(`server {
+		result += fmt.Sprintf(`server {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
+    resolver 127.0.0.11 valid=30s;
 
     server_name _;
 
     location / {
-      proxy_pass http://%s:%s;
+      proxy_pass http://%s_upstream;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
     }
 
     server_tokens off;
 }
-`, service.Name, service.Port)
+`, service.Name)
+		return result
 	}
 
 	// Multiple services: use path-based routing
-	result := `server {
+	result += `server {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
+    resolver 127.0.0.11 valid=30s;
 
     server_name _;
 
@@ -210,38 +229,49 @@ func generatePathConfig(config ServicesConfig) string {
 	// Add location blocks for each service
 	for _, service := range config.Services {
 		result += fmt.Sprintf(`    location /%s/ {
-      proxy_pass http://%s:%s/;
+      proxy_pass http://%s_upstream/;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
     }
 
-`, service.Name, service.Name, service.Port)
+`, service.Name, service.Name)
 	}
 
 	// Add default location (routes to first service)
 	firstService := config.Services[0]
 	result += fmt.Sprintf(`    location / {
-      proxy_pass http://%s:%s;
+      proxy_pass http://%s_upstream;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
     }
 
     server_tokens off;
 }
-`, firstService.Name, firstService.Port)
+`, firstService.Name)
 
 	return result
 }
 
 // generateSubdomainConfig generates subdomain-based routing configuration
 func generateSubdomainConfig(config ServicesConfig) string {
-	if config.Domain == "" {
+	if config.Domain == "" || len(config.Services) == 0 {
 		return ""
 	}
 
 	result := ""
+
+	// Generate upstream blocks for each service
+	for _, service := range config.Services {
+		result += fmt.Sprintf(`upstream %s_upstream {
+    server %s:%s max_fails=3 fail_timeout=30s;
+}
+
+`, service.Name, service.Name, service.Port)
+	}
 
 	// Create server block for each service subdomain
 	for _, service := range config.Services {
@@ -250,43 +280,45 @@ func generateSubdomainConfig(config ServicesConfig) string {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
+    resolver 127.0.0.11 valid=30s;
 
     server_name %s;
 
     location / {
-      proxy_pass http://%s:%s;
+      proxy_pass http://%s_upstream;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
     }
 
     server_tokens off;
 }
 
-`, subdomain, service.Name, service.Port)
+`, subdomain, service.Name)
 	}
 
 	// Add main domain server block (routes to first service)
-	if len(config.Services) > 0 {
-		firstService := config.Services[0]
-		result += fmt.Sprintf(`server {
+	firstService := config.Services[0]
+	result += fmt.Sprintf(`server {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
+    resolver 127.0.0.11 valid=30s;
 
     server_name %s;
 
     location / {
-      proxy_pass http://%s:%s;
+      proxy_pass http://%s_upstream;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
     }
 
     server_tokens off;
 }
-`, config.Domain, firstService.Name, firstService.Port)
-	}
+`, config.Domain, firstService.Name)
 
 	return result
 }
