@@ -179,21 +179,10 @@ func generatePathConfig(config ServicesConfig) string {
 		return ""
 	}
 
-	result := ""
-
-	// Generate upstream blocks for each service
-	for _, service := range config.Services {
-		result += fmt.Sprintf(`upstream %s_upstream {
-    server %s:%s max_fails=3 fail_timeout=30s;
-}
-
-`, service.Name, service.Name, service.Port)
-	}
-
 	// If only one service, generate simple proxy config
 	if len(config.Services) == 1 {
 		service := config.Services[0]
-		result += fmt.Sprintf(`server {
+		return fmt.Sprintf(`server {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
@@ -202,21 +191,21 @@ func generatePathConfig(config ServicesConfig) string {
     server_name _;
 
     location / {
-      proxy_pass http://%s_upstream;
+      set $upstream_service %s:%s;
+      proxy_pass http://$upstream_service;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+      proxy_connect_timeout 5s;
     }
 
     server_tokens off;
 }
-`, service.Name)
-		return result
+`, service.Name, service.Port)
 	}
 
 	// Multiple services: use path-based routing
-	result += `server {
+	result := `server {
     listen 443 ssl;
     http2 on;
     include /etc/nginx/conf.d/ssl.conf;
@@ -229,29 +218,31 @@ func generatePathConfig(config ServicesConfig) string {
 	// Add location blocks for each service
 	for _, service := range config.Services {
 		result += fmt.Sprintf(`    location /%s/ {
-      proxy_pass http://%s_upstream/;
+      set $upstream_service %s:%s;
+      proxy_pass http://$upstream_service/;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+      proxy_connect_timeout 5s;
     }
 
-`, service.Name, service.Name)
+`, service.Name, service.Name, service.Port)
 	}
 
 	// Add default location (routes to first service)
 	firstService := config.Services[0]
 	result += fmt.Sprintf(`    location / {
-      proxy_pass http://%s_upstream;
+      set $upstream_service %s:%s;
+      proxy_pass http://$upstream_service;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+      proxy_connect_timeout 5s;
     }
 
     server_tokens off;
 }
-`, firstService.Name)
+`, firstService.Name, firstService.Port)
 
 	return result
 }
@@ -263,15 +254,6 @@ func generateSubdomainConfig(config ServicesConfig) string {
 	}
 
 	result := ""
-
-	// Generate upstream blocks for each service
-	for _, service := range config.Services {
-		result += fmt.Sprintf(`upstream %s_upstream {
-    server %s:%s max_fails=3 fail_timeout=30s;
-}
-
-`, service.Name, service.Name, service.Port)
-	}
 
 	// Create server block for each service subdomain
 	for _, service := range config.Services {
@@ -285,17 +267,18 @@ func generateSubdomainConfig(config ServicesConfig) string {
     server_name %s;
 
     location / {
-      proxy_pass http://%s_upstream;
+      set $upstream_service %s:%s;
+      proxy_pass http://$upstream_service;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+      proxy_connect_timeout 5s;
     }
 
     server_tokens off;
 }
 
-`, subdomain, service.Name)
+`, subdomain, service.Name, service.Port)
 	}
 
 	// Add main domain server block (routes to first service)
@@ -309,16 +292,17 @@ func generateSubdomainConfig(config ServicesConfig) string {
     server_name %s;
 
     location / {
-      proxy_pass http://%s_upstream;
+      set $upstream_service %s:%s;
+      proxy_pass http://$upstream_service;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_next_upstream error timeout invalid_header http_500 http_502 http_503;
+      proxy_connect_timeout 5s;
     }
 
     server_tokens off;
 }
-`, config.Domain, firstService.Name)
+`, config.Domain, firstService.Name, firstService.Port)
 
 	return result
 }
