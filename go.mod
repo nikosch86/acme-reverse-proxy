@@ -4,7 +4,7 @@ go 1.23.0
 
 toolchain go1.24.1
 
-require github.com/go-acme/lego/v4 v4.23.1
+require github.com/go-acme/lego/v4 v4.24.0
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
