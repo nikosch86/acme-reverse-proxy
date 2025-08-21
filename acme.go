@@ -9,10 +9,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -37,6 +39,7 @@ const (
 	dirPerm           = 0755
 	defaultExpiryDaysThreshold = 30
 	defaultSAN        = ""
+	defaultCACertPath = ""
 )
 
 type Config struct {
@@ -47,6 +50,7 @@ type Config struct {
 	KeyPath  string
 	CADirURL string
 	ExpiryDaysThreshold int
+	CACertPath string
 }
 
 // MyUser implements the acme.User interface
@@ -116,6 +120,7 @@ func loadConfig() *Config {
 		KeyPath:  getEnvWithDefault("KEY_PATH", defaultKeyPath),
 		CADirURL: getEnvWithDefault("CA_DIR_URL", defaultCADirURL),
 		ExpiryDaysThreshold: expiryDaysThreshold,
+		CACertPath: getEnvWithDefault("ACME_CA_CERT_PATH", defaultCACertPath),
 	}
 }
 
@@ -209,6 +214,35 @@ func setupACMEClient(cfg *Config) (*lego.Client, error) {
 
 	config := lego.NewConfig(user)
 	config.CADirURL = cfg.CADirURL
+
+	// Configure custom CA certificate if provided
+	if cfg.CACertPath != "" {
+		caCert, err := os.ReadFile(cfg.CACertPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading CA certificate from %s: %w", cfg.CACertPath, err)
+		}
+
+		// Create a certificate pool with the custom CA
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("parsing CA certificate from %s", cfg.CACertPath)
+		}
+
+		// Create custom TLS config
+		tlsConfig := &tls.Config{
+			RootCAs: caCertPool,
+		}
+
+		// Create custom HTTP client with the TLS config
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+			},
+		}
+
+		config.HTTPClient = httpClient
+		log.Printf("Using custom CA certificate from %s", cfg.CACertPath)
+	}
 
 	client, err := lego.NewClient(config)
 	if err != nil {

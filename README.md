@@ -92,6 +92,7 @@ services:
 - `CA_DIR_URL` - ACME CA directory URL, defaults to Let's Encrypt staging:
   - Staging: `https://acme-staging-v02.api.letsencrypt.org/directory`
   - Production: `https://acme-v02.api.letsencrypt.org/directory`
+- `ACME_CA_CERT_PATH` - Path to custom CA certificate for private ACME servers (see Custom CA section below)
 - `NO_HTTP_SERVICE` - Set to any value to disable the default reverse proxy configuration
 
 ## Configuration Methods
@@ -146,6 +147,50 @@ Mount a custom configuration to `/etc/nginx/conf.d/reverse-proxy.conf` and ensur
 ```nginx
 include /etc/nginx/conf.d/ssl.conf;
 ```
+
+## Using Custom CA Certificates
+
+When connecting to a private ACME server (like step-ca, smallstep, or Boulder), you may need to provide a custom CA certificate to establish trust. This is done by:
+
+1. **Mount the CA certificate** into the container:
+```yaml
+volumes:
+  - ./ca-cert.pem:/etc/ssl/certs/acme-ca.pem:ro
+```
+
+2. **Set the environment variable** to point to the certificate:
+```yaml
+environment:
+  ACME_CA_CERT_PATH: /etc/ssl/certs/acme-ca.pem
+  CA_DIR_URL: https://your-acme-server.internal/acme/directory
+```
+
+### Complete Example with Custom CA
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites:/etc/nginx/sites:ro
+      - ./ca-certificates/my-ca.pem:/etc/ssl/certs/acme-ca.pem:ro
+      - ssl-certs:/etc/ssl/private
+    environment:
+      DOMAIN: service.internal.company.com
+      EMAIL: admin@company.com
+      SERVICE: backend-service
+      PORT: 3000
+      CA_DIR_URL: https://ca.internal.company.com/acme/directory
+      ACME_CA_CERT_PATH: /etc/ssl/certs/acme-ca.pem
+
+volumes:
+  ssl-certs:
+```
+
+The ACME client will automatically use the provided CA certificate to validate the TLS connection to your private ACME server.
 
 ## How It Works
 
