@@ -81,8 +81,11 @@ services:
 - `DOMAIN` - Primary domain name for certificate generation (mandatory)
 
 **Optional:**
-- `SERVICE` - Backend service name for reverse proxy, defaults to `service`
-- `PORT` - Backend service port, defaults to `80`
+- `SERVICE` - Backend service name for single-service mode, defaults to `service`
+- `PORT` - Backend service port for single-service mode, defaults to `80`
+- `SERVICE_1`, `SERVICE_2`, ... - Backend service names for multi-service mode
+- `PORT_1`, `PORT_2`, ... - Backend service ports for multi-service mode
+- `ROUTING_MODE` - Routing strategy for multi-service mode: `path` (default) or `subdomain`
 - `EMAIL` - Email for ACME account registration, defaults to `admin@dev.lan`
 - `SAN` - Subject Alternative Names (comma-separated), defaults to empty
 - `ENABLE_WEBSOCKET` - Enable WebSocket support in reverse proxy, defaults to `false` (set to `true` to enable)
@@ -148,6 +151,90 @@ Mount a custom configuration to `/etc/nginx/conf.d/reverse-proxy.conf` and ensur
 ```nginx
 include /etc/nginx/conf.d/ssl.conf;
 ```
+
+## Multi-Service Configuration
+
+The reverse proxy supports proxying to multiple backend services with two routing modes:
+
+### Path-Based Routing (Default)
+
+Services are accessible via different paths on the same domain:
+- `example.com/api/` → `api:8080`
+- `example.com/web/` → `web:3000`
+- `example.com/admin/` → `admin:9090`
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multi-service configuration
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: admin
+      PORT_3: 9090
+      # Path routing is default, but can be explicit
+      ROUTING_MODE: path
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+volumes:
+  ssl-certs:
+```
+
+### Subdomain-Based Routing
+
+Services are accessible via different subdomains:
+- `api.example.com` → `api:8080`
+- `web.example.com` → `web:3000`
+- `admin.example.com` → `admin:9090`
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multi-service configuration
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: admin
+      PORT_3: 9090
+      # Enable subdomain routing
+      ROUTING_MODE: subdomain
+      # Certificate must include all subdomains
+      SAN: api.example.com,web.example.com,admin.example.com
+      # Or use a wildcard certificate
+      # SAN: "*.example.com"
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+volumes:
+  ssl-certs:
+```
+
+**Important for Subdomain Routing:**
+- Service names must be valid subdomain labels (no dots or underscores)
+- The certificate must include all subdomains either by:
+  - Listing each subdomain in the `SAN` environment variable
+  - Using a wildcard certificate (`*.example.com`)
+- The config generator will log all required domains when starting up
+- DNS must be configured to point all subdomains to the proxy server
 
 ## WebSocket Support
 
