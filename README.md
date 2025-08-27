@@ -85,6 +85,7 @@ services:
 - `PORT` - Backend service port, defaults to `80`
 - `EMAIL` - Email for ACME account registration, defaults to `admin@dev.lan`
 - `SAN` - Subject Alternative Names (comma-separated), defaults to empty
+- `ENABLE_WEBSOCKET` - Enable WebSocket support in reverse proxy, defaults to `false` (set to `true` to enable)
 - `EXPIRY_DAYS_THRESHOLD` - Certificate renewal threshold in days, defaults to `30`
 - `RENEWAL_SECONDS` - Certificate check interval in seconds, defaults to `86400` (24 hours)
 - `CERT_PATH` - Certificate file path, defaults to `/etc/ssl/private/fullchain.pem`
@@ -147,6 +148,54 @@ Mount a custom configuration to `/etc/nginx/conf.d/reverse-proxy.conf` and ensur
 ```nginx
 include /etc/nginx/conf.d/ssl.conf;
 ```
+
+## WebSocket Support
+
+The reverse proxy can be configured to support WebSocket connections by setting the `ENABLE_WEBSOCKET` environment variable to `true`. This adds the necessary nginx headers and configuration for WebSocket proxying.
+
+### WebSocket Configuration
+
+When WebSocket support is enabled, the proxy automatically:
+- Adds the `Upgrade` and `Connection` headers for WebSocket handshake
+- Sets HTTP/1.1 for WebSocket compatibility
+- Configures appropriate timeouts for long-lived connections
+
+### Example with WebSocket
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      SERVICE: websocket-app
+      PORT: 3000
+      ENABLE_WEBSOCKET: true
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+  websocket-app:
+    image: your-websocket-app:latest
+    expose:
+      - "3000"
+
+volumes:
+  ssl-certs:
+```
+
+### Testing WebSocket Connections
+
+Once configured, you can test WebSocket connections using:
+- Browser developer tools with WebSocket clients
+- Command-line tools like `wscat`
+- WebSocket testing websites
+
+The proxy will handle the WebSocket upgrade seamlessly while maintaining SSL/TLS encryption.
 
 ## Using Custom CA Certificates
 
