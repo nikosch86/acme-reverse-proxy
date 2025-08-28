@@ -20,8 +20,9 @@ func getEnvWithDefault(key, defaultValue string) string {
 }
 
 type Service struct {
-	Name string
-	Port string
+	Name     string
+	Port     string
+	AuthFile string // Path to htpasswd file if auth enabled
 }
 
 type NginxConfig struct {
@@ -29,6 +30,7 @@ type NginxConfig struct {
 	Services        []Service
 	EnableWebsocket bool
 	RoutingMode     string
+	GlobalAuthFile  string // Path to global htpasswd file if global auth enabled
 }
 
 func generateNginxConfig() error {
@@ -41,6 +43,12 @@ func generateNginxConfig() error {
 
 	if config.Domain == "" {
 		return fmt.Errorf("DOMAIN environment variable is not set")
+	}
+
+	// Check for global basic auth
+	if globalAuth := os.Getenv("BASIC_AUTH_USERS"); globalAuth != "" {
+		config.GlobalAuthFile = "/etc/nginx/auth/global.htpasswd"
+		log.Println("Global basic auth configured")
 	}
 
 	// Check for multi-service configuration (SERVICE_1, SERVICE_2, etc.)
@@ -62,10 +70,22 @@ func generateNginxConfig() error {
 			servicePort = "80" // Default port
 		}
 
-		config.Services = append(config.Services, Service{
+		service := Service{
 			Name: serviceName,
 			Port: servicePort,
-		})
+		}
+
+		// Check for service-specific auth
+		serviceAuthKey := fmt.Sprintf("BASIC_AUTH_SERVICE_%d", i)
+		if serviceAuth := os.Getenv(serviceAuthKey); serviceAuth != "" {
+			service.AuthFile = fmt.Sprintf("/etc/nginx/auth/service_%d.htpasswd", i)
+			log.Printf("Service %s: basic auth configured", serviceName)
+		} else if config.GlobalAuthFile != "" {
+			// Use global auth if no service-specific auth
+			service.AuthFile = config.GlobalAuthFile
+		}
+
+		config.Services = append(config.Services, service)
 		serviceFound = true
 	}
 
@@ -75,10 +95,20 @@ func generateNginxConfig() error {
 		servicePort := getEnvWithDefault("PORT", "80")
 
 		if serviceName != "" {
-			config.Services = append(config.Services, Service{
+			service := Service{
 				Name: serviceName,
 				Port: servicePort,
-			})
+			}
+
+			// Check for single service auth or use global
+			if serviceAuth := os.Getenv("BASIC_AUTH_SERVICE"); serviceAuth != "" {
+				service.AuthFile = "/etc/nginx/auth/service.htpasswd"
+				log.Printf("Service %s: basic auth configured", serviceName)
+			} else if config.GlobalAuthFile != "" {
+				service.AuthFile = config.GlobalAuthFile
+			}
+
+			config.Services = append(config.Services, service)
 		}
 	}
 

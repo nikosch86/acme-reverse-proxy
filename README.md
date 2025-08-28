@@ -98,6 +98,9 @@ services:
   - Production: `https://acme-v02.api.letsencrypt.org/directory`
 - `ACME_CA_CERT_PATH` - Path to custom CA certificate for private ACME servers (see Custom CA section below)
 - `NO_HTTP_SERVICE` - Set to any value to disable the default reverse proxy configuration
+- `BASIC_AUTH_USERS` - Global basic auth users in format `user1:hash1,user2:hash2` (see Basic Auth section below)
+- `BASIC_AUTH_SERVICE` - Basic auth for single service mode
+- `BASIC_AUTH_SERVICE_1`, `BASIC_AUTH_SERVICE_2`, ... - Per-service basic auth for multi-service mode
 
 ## Configuration Methods
 
@@ -285,6 +288,114 @@ Once configured, you can test WebSocket connections using:
 - WebSocket testing websites
 
 The proxy will handle the WebSocket upgrade seamlessly while maintaining SSL/TLS encryption.
+
+## Basic Authentication
+
+The reverse proxy supports HTTP Basic Authentication at both global and per-service levels. Authentication credentials must be provided as bcrypt-hashed passwords in htpasswd format.
+
+### Password Configuration
+
+The system accepts both plaintext and pre-hashed passwords. Plaintext passwords are automatically hashed at container startup.
+
+#### Option 1: Plaintext Passwords (Automatic Hashing)
+
+Simply provide plaintext passwords and they'll be hashed automatically:
+```yaml
+environment:
+  # Plaintext passwords - will be hashed at startup
+  BASIC_AUTH_USERS: "admin:secretpassword,viewer:readonlypass"
+  BASIC_AUTH_SERVICE_2: "apiuser:apikey123"
+```
+
+#### Option 2: Pre-Hashed Passwords (More Secure)
+
+For production environments, pre-hash passwords to avoid exposing them in environment variables:
+```bash
+# Using Apache's htpasswd tool
+htpasswd -nB username
+
+# Using OpenSSL (generates a compatible bcrypt hash)
+openssl passwd -bcrypt
+
+# Or use an online bcrypt generator with cost factor 5
+```
+
+Then use the hashed passwords:
+```yaml
+environment:
+  # Pre-hashed passwords (bcrypt)
+  BASIC_AUTH_USERS: "admin:$2y$05$xyz...,viewer:$2y$05$abc..."
+```
+
+### Global Authentication
+
+Protect all services with the same credentials:
+
+```yaml
+environment:
+  DOMAIN: example.com
+  SERVICE_1: api
+  SERVICE_2: web
+  # All services require authentication
+  BASIC_AUTH_USERS: "admin:$2y$05$xyz...,viewer:$2y$05$abc..."
+```
+
+### Per-Service Authentication
+
+Different credentials for each service:
+
+```yaml
+environment:
+  DOMAIN: example.com
+  SERVICE_1: public-api
+  SERVICE_2: admin-panel
+  SERVICE_3: internal-api
+  # No auth for public-api (SERVICE_1)
+  # Admin panel requires admin credentials
+  BASIC_AUTH_SERVICE_2: "admin:$2y$05$xyz..."
+  # Internal API has its own credentials
+  BASIC_AUTH_SERVICE_3: "apiuser:$2y$05$abc..."
+```
+
+### Mixed Authentication
+
+Combine global and per-service authentication:
+
+```yaml
+environment:
+  DOMAIN: example.com
+  SERVICE_1: api
+  SERVICE_2: admin
+  SERVICE_3: public
+  # Global auth for most services
+  BASIC_AUTH_USERS: "user:$2y$05$xyz..."
+  # Admin has special credentials (overrides global)
+  BASIC_AUTH_SERVICE_2: "admin:$2y$05$abc..."
+  # Public service has no auth (SERVICE_3 - no auth configured)
+```
+
+### Single Service Mode
+
+For single service configurations:
+
+```yaml
+environment:
+  DOMAIN: example.com
+  SERVICE: backend
+  PORT: 3000
+  # Single service authentication
+  BASIC_AUTH_SERVICE: "user:$2y$05$xyz..."
+```
+
+### Authentication Format
+
+- **Multiple users**: Comma-separated `user:password` or `user:hash` pairs
+- **Plaintext**: `"alice:password123,bob:secret"`
+- **Pre-hashed**: `"alice:$2y$05$hash1,bob:$2y$05$hash2"`
+- **Mixed**: `"alice:plaintext,bob:$2y$05$hash"` (both supported in same variable)
+- **Hash format**: Bcrypt with `$2y$`, `$2a$`, or `$2b$` prefix (Apache htpasswd compatible)
+
+The auth files are created at container startup in `/etc/nginx/auth/`
 
 ## Using Custom CA Certificates
 

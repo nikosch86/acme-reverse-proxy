@@ -12,6 +12,9 @@ RUN go build -o generate_nginx_config cmd_generate_nginx_config.go
 
 FROM nginx:1.29-alpine
 
+# Install apache2-utils for htpasswd command
+RUN apk add --no-cache apache2-utils
+
 WORKDIR /root/
 
 COPY --from=builder /app/acme /usr/local/bin/acme
