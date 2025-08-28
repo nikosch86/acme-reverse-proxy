@@ -73,6 +73,9 @@ func (u *MyUser) GetPrivateKey() crypto.PrivateKey {
 type customHTTP01Provider struct{}
 
 func (d *customHTTP01Provider) Present(domain, token, keyAuth string) error {
+	if token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	challengePath := filepath.Join(challengeBasePath, token)
 	err := os.MkdirAll(challengeBasePath, dirPerm)
 	if err != nil {
@@ -82,6 +85,9 @@ func (d *customHTTP01Provider) Present(domain, token, keyAuth string) error {
 }
 
 func (d *customHTTP01Provider) CleanUp(domain, token, keyAuth string) error {
+	if token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	challengePath := filepath.Join(challengeBasePath, token)
 	return os.Remove(challengePath)
 }

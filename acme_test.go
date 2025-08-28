@@ -292,7 +292,7 @@ func TestCustomHTTP01Provider(t *testing.T) {
 			domain:  "example.com",
 			token:   "",
 			keyAuth: "test-key-auth",
-			wantErr: false, // Should succeed in Docker
+			wantErr: true, // Should fail with empty token
 		},
 	}
 	
