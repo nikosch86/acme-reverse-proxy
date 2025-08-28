@@ -159,6 +159,7 @@ The reverse proxy supports proxying to multiple backend services with two routin
 ### Path-Based Routing (Default)
 
 Services are accessible via different paths on the same domain:
+- `example.com/` → `api:8080` (first service, default route)
 - `example.com/api/` → `api:8080`
 - `example.com/web/` → `web:3000`
 - `example.com/admin/` → `admin:9090`
@@ -193,6 +194,7 @@ volumes:
 ### Subdomain-Based Routing
 
 Services are accessible via different subdomains:
+- `example.com` → `api:8080` (first service, default route)
 - `api.example.com` → `api:8080`
 - `web.example.com` → `web:3000`
 - `admin.example.com` → `admin:9090`

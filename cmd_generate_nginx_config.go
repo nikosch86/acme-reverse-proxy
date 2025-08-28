@@ -1,3 +1,6 @@
+//go:build config_gen
+// +build config_gen
+
 package main
 
 import (
@@ -45,7 +48,7 @@ func generateNginxConfig() error {
 	for i := 1; i <= 100; i++ { // Support up to 100 services
 		serviceName := os.Getenv(fmt.Sprintf("SERVICE_%d", i))
 		servicePort := os.Getenv(fmt.Sprintf("PORT_%d", i))
-		
+
 		if serviceName == "" {
 			if i == 1 {
 				// No SERVICE_1, check for single service mode
@@ -54,11 +57,11 @@ func generateNginxConfig() error {
 			// End of sequential services
 			continue
 		}
-		
+
 		if servicePort == "" {
 			servicePort = "80" // Default port
 		}
-		
+
 		config.Services = append(config.Services, Service{
 			Name: serviceName,
 			Port: servicePort,
@@ -70,7 +73,7 @@ func generateNginxConfig() error {
 	if !serviceFound {
 		serviceName := getEnvWithDefault("SERVICE", "")
 		servicePort := getEnvWithDefault("PORT", "80")
-		
+
 		if serviceName != "" {
 			config.Services = append(config.Services, Service{
 				Name: serviceName,
@@ -86,7 +89,7 @@ func generateNginxConfig() error {
 				return fmt.Errorf("service name '%s' contains invalid characters for subdomain routing (no dots or underscores allowed)", service.Name)
 			}
 		}
-		
+
 		// Log the required certificate domains
 		log.Printf("Subdomain routing enabled. Certificate must include:")
 		log.Printf("  - Primary: %s", config.Domain)
@@ -113,7 +116,7 @@ func generateNginxConfig() error {
 	// Output to stdout by default, or to file if OUTPUT_FILE is set
 	outputFile := os.Getenv("OUTPUT_FILE")
 	var output *os.File
-	
+
 	if outputFile != "" {
 		output, err = os.Create(outputFile)
 		if err != nil {
