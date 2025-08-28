@@ -11,8 +11,9 @@ import (
 
 // Service represents a service configuration for nginx
 type ServiceTest struct {
-	Name string
-	Port string
+	Name     string
+	Port     string
+	AuthFile string // Path to htpasswd file if auth enabled
 }
 
 // NginxConfig represents the nginx configuration
@@ -21,6 +22,7 @@ type NginxConfigTest struct {
 	Services        []ServiceTest
 	EnableWebsocket bool
 	RoutingMode     string
+	GlobalAuthFile  string // Path to global htpasswd file if global auth enabled
 }
 
 // This duplicates the getEnvWithDefault function for testing purposes
@@ -45,6 +47,11 @@ func generateNginxConfigTest(templateContent string, outputFile string) error {
 		return fmt.Errorf("DOMAIN environment variable is not set")
 	}
 
+	// Check for global basic auth
+	if globalAuth := os.Getenv("BASIC_AUTH_USERS"); globalAuth != "" {
+		config.GlobalAuthFile = "/etc/nginx/auth/global.htpasswd"
+	}
+
 	// Check for multi-service configuration (SERVICE_1, SERVICE_2, etc.)
 	serviceFound := false
 	for i := 1; i <= 100; i++ { // Support up to 100 services
@@ -64,10 +71,21 @@ func generateNginxConfigTest(templateContent string, outputFile string) error {
 			servicePort = "80" // Default port
 		}
 
-		config.Services = append(config.Services, ServiceTest{
+		service := ServiceTest{
 			Name: serviceName,
 			Port: servicePort,
-		})
+		}
+
+		// Check for service-specific auth
+		serviceAuthKey := fmt.Sprintf("BASIC_AUTH_SERVICE_%d", i)
+		if serviceAuth := os.Getenv(serviceAuthKey); serviceAuth != "" {
+			service.AuthFile = fmt.Sprintf("/etc/nginx/auth/service_%d.htpasswd", i)
+		} else if config.GlobalAuthFile != "" {
+			// Use global auth if no service-specific auth
+			service.AuthFile = config.GlobalAuthFile
+		}
+
+		config.Services = append(config.Services, service)
 		serviceFound = true
 	}
 
@@ -77,10 +95,19 @@ func generateNginxConfigTest(templateContent string, outputFile string) error {
 		servicePort := getEnvWithDefaultTest("PORT", "80")
 
 		if serviceName != "" {
-			config.Services = append(config.Services, ServiceTest{
+			service := ServiceTest{
 				Name: serviceName,
 				Port: servicePort,
-			})
+			}
+
+			// Check for single service auth or use global
+			if serviceAuth := os.Getenv("BASIC_AUTH_SERVICE"); serviceAuth != "" {
+				service.AuthFile = "/etc/nginx/auth/service.htpasswd"
+			} else if config.GlobalAuthFile != "" {
+				service.AuthFile = config.GlobalAuthFile
+			}
+
+			config.Services = append(config.Services, service)
 		}
 	}
 
@@ -135,7 +162,7 @@ func TestGetEnvWithDefaultNginxConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up env before test
 			os.Unsetenv(tt.key)
-			
+
 			if tt.envValue != "" {
 				os.Setenv(tt.key, tt.envValue)
 				defer os.Unsetenv(tt.key)
@@ -225,10 +252,10 @@ func TestGenerateNginxConfigFunction(t *testing.T) {
 		{
 			name: "subdomain routing with websocket",
 			envVars: map[string]string{
-				"DOMAIN":          "example.com",
-				"SERVICE_1":       "chat",
-				"PORT_1":          "3000",
-				"ROUTING_MODE":    "subdomain",
+				"DOMAIN":           "example.com",
+				"SERVICE_1":        "chat",
+				"PORT_1":           "3000",
+				"ROUTING_MODE":     "subdomain",
 				"ENABLE_WEBSOCKET": "true",
 			},
 			expectError: false,
@@ -343,7 +370,7 @@ func TestGenerateNginxConfigFunction(t *testing.T) {
 func TestNginxConfigServiceParsing(t *testing.T) {
 	// Test the service parsing logic more thoroughly
 	templateContent := `Services: {{len .Services}}`
-	
+
 	tests := []struct {
 		name         string
 		envVars      map[string]string
@@ -445,6 +472,167 @@ func TestNginxConfigServiceParsing(t *testing.T) {
 	}
 }
 
+func TestBasicAuthConfiguration(t *testing.T) {
+	// Template that includes auth directives
+	authTemplateContent := `{{- if .Services -}}
+{{- range .Services }}
+# Service: {{.Name}}
+{{- if .AuthFile }}
+auth_basic "Restricted";
+auth_basic_user_file {{.AuthFile}};
+{{- end }}
+{{- end }}
+{{- if .GlobalAuthFile }}
+# Global auth configured: {{.GlobalAuthFile}}
+{{- end }}
+{{- end -}}`
+
+	tests := []struct {
+		name        string
+		envVars     map[string]string
+		contains    []string
+		notContains []string
+	}{
+		{
+			name: "global auth only",
+			envVars: map[string]string{
+				"DOMAIN":           "example.com",
+				"SERVICE_1":        "app",
+				"BASIC_AUTH_USERS": "user1:hash1,user2:hash2",
+			},
+			contains: []string{
+				"# Service: app",
+				"auth_basic \"Restricted\"",
+				"auth_basic_user_file /etc/nginx/auth/global.htpasswd",
+				"# Global auth configured: /etc/nginx/auth/global.htpasswd",
+			},
+		},
+		{
+			name: "service-specific auth overrides global",
+			envVars: map[string]string{
+				"DOMAIN":               "example.com",
+				"SERVICE_1":            "api",
+				"SERVICE_2":            "web",
+				"BASIC_AUTH_USERS":     "global:hash",
+				"BASIC_AUTH_SERVICE_1": "apiuser:hash",
+			},
+			contains: []string{
+				"# Service: api",
+				"auth_basic_user_file /etc/nginx/auth/service_1.htpasswd",
+				"# Service: web",
+				"auth_basic_user_file /etc/nginx/auth/global.htpasswd",
+				"# Global auth configured: /etc/nginx/auth/global.htpasswd",
+			},
+		},
+		{
+			name: "no auth configured",
+			envVars: map[string]string{
+				"DOMAIN":    "example.com",
+				"SERVICE_1": "app",
+			},
+			contains: []string{
+				"# Service: app",
+			},
+			notContains: []string{
+				"auth_basic",
+				"auth_basic_user_file",
+				"# Global auth configured",
+			},
+		},
+		{
+			name: "single service mode with auth",
+			envVars: map[string]string{
+				"DOMAIN":             "example.com",
+				"SERVICE":            "webapp",
+				"BASIC_AUTH_SERVICE": "admin:hash",
+			},
+			contains: []string{
+				"# Service: webapp",
+				"auth_basic \"Restricted\"",
+				"auth_basic_user_file /etc/nginx/auth/service.htpasswd",
+			},
+		},
+		{
+			name: "mixed auth - some services protected",
+			envVars: map[string]string{
+				"DOMAIN":               "example.com",
+				"SERVICE_1":            "public",
+				"SERVICE_2":            "admin",
+				"SERVICE_3":            "api",
+				"BASIC_AUTH_SERVICE_2": "admin:hash",
+				"BASIC_AUTH_SERVICE_3": "apikey:hash",
+			},
+			contains: []string{
+				"# Service: public",
+				"# Service: admin",
+				"auth_basic_user_file /etc/nginx/auth/service_2.htpasswd",
+				"# Service: api",
+				"auth_basic_user_file /etc/nginx/auth/service_3.htpasswd",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean environment
+			for i := 1; i <= 10; i++ {
+				os.Unsetenv(fmt.Sprintf("SERVICE_%d", i))
+				os.Unsetenv(fmt.Sprintf("BASIC_AUTH_SERVICE_%d", i))
+			}
+			os.Unsetenv("DOMAIN")
+			os.Unsetenv("SERVICE")
+			os.Unsetenv("BASIC_AUTH_USERS")
+			os.Unsetenv("BASIC_AUTH_SERVICE")
+
+			// Set test environment variables
+			for key, value := range tt.envVars {
+				os.Setenv(key, value)
+			}
+
+			tempDir, err := os.MkdirTemp("", "nginx-auth-test")
+			if err != nil {
+				t.Fatalf("Failed to create temp dir: %v", err)
+			}
+			defer os.RemoveAll(tempDir)
+
+			outputFile := filepath.Join(tempDir, "output.conf")
+
+			err = generateNginxConfigTest(authTemplateContent, outputFile)
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+
+			output, err := os.ReadFile(outputFile)
+			if err != nil {
+				t.Errorf("Failed to read output file: %v", err)
+				return
+			}
+
+			outputStr := string(output)
+
+			// Check expected content
+			for _, expected := range tt.contains {
+				if !strings.Contains(outputStr, expected) {
+					t.Errorf("Expected output to contain %q, but it didn't. Output:\n%s", expected, outputStr)
+				}
+			}
+
+			// Check content that should not be present
+			for _, notExpected := range tt.notContains {
+				if strings.Contains(outputStr, notExpected) {
+					t.Errorf("Expected output to NOT contain %q, but it did. Output:\n%s", notExpected, outputStr)
+				}
+			}
+
+			// Clean up
+			for key := range tt.envVars {
+				os.Unsetenv(key)
+			}
+		})
+	}
+}
+
 func TestNginxConfigTemplateExecution(t *testing.T) {
 	// Test template execution with actual nginx template patterns
 	realTemplateContent := `{{- if .Services -}}
@@ -517,10 +705,10 @@ server {
 		{
 			name: "websocket enabled",
 			envVars: map[string]string{
-				"DOMAIN":          "example.com",
-				"SERVICE_1":       "chat",
-				"PORT_1":          "3000",
-				"ROUTING_MODE":    "subdomain",
+				"DOMAIN":           "example.com",
+				"SERVICE_1":        "chat",
+				"PORT_1":           "3000",
+				"ROUTING_MODE":     "subdomain",
 				"ENABLE_WEBSOCKET": "true",
 			},
 			contains: []string{

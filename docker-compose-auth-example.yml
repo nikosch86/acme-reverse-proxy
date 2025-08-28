@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # Example reverse proxy with basic authentication
+  reverse-proxy:
+    build: .
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Required domain
+      DOMAIN: example.local
+      EMAIL: admin@example.local
+      
+      # Multi-service configuration
+      SERVICE_1: public-api
+      PORT_1: 8080
+      SERVICE_2: admin-panel
+      PORT_2: 3000
+      SERVICE_3: internal-api
+      PORT_3: 5000
+      
+      # Basic Auth Configuration
+      # Example 1: Plaintext passwords (automatically hashed at startup)
+      # Convenient for development but less secure
+      BASIC_AUTH_USERS: "user:password123,viewer:readonly"
+      
+      # Example 2: Pre-hashed password for admin panel (more secure)
+      # Password 'admin123' already hashed with bcrypt
+      BASIC_AUTH_SERVICE_2: "admin:$$2y$$05$$ZMxJRZqxT3yag8KvceHnWuu5JZLqSYlTzPqOmFMiUNPojLyahlXO2"
+      
+      # Example 3: Mixed - some plaintext, some hashed (both work)
+      # BASIC_AUTH_USERS: "user:plainpass,admin:$$2y$$05$$hash..."
+      
+      # Public API has no auth (no BASIC_AUTH_SERVICE_1 defined, and we'll override global)
+      # To make SERVICE_1 public, you would need to not set BASIC_AUTH_SERVICE_1
+      # and handle it in nginx config or leave it without auth
+      
+      # Use Let's Encrypt staging for testing
+      CA_DIR_URL: https://acme-staging-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+    networks:
+      - proxy-network
+
+  # Example backend services (replace with your actual services)
+  public-api:
+    image: nginx:alpine
+    networks:
+      - proxy-network
+    volumes:
+      - ./test-content/public:/usr/share/nginx/html:ro
+
+  admin-panel:
+    image: nginx:alpine
+    networks:
+      - proxy-network
+    volumes:
+      - ./test-content/admin:/usr/share/nginx/html:ro
+
+  internal-api:
+    image: nginx:alpine
+    networks:
+      - proxy-network
+    volumes:
+      - ./test-content/internal:/usr/share/nginx/html:ro
+
+volumes:
+  ssl-certs:
+
+networks:
+  proxy-network:
+    driver: bridge
+
+# To generate password hashes for your own users:
+# htpasswd -nB username
+# or
+# docker run --rm httpd:alpine htpasswd -nB username
+# 
+# Then add them to the appropriate BASIC_AUTH environment variables
+# Remember to escape $ with $$ in docker-compose YAML files
