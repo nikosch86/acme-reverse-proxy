@@ -81,10 +81,14 @@ services:
 - `DOMAIN` - Primary domain name for certificate generation (mandatory)
 
 **Optional:**
-- `SERVICE` - Backend service name for reverse proxy, defaults to `service`
-- `PORT` - Backend service port, defaults to `80`
+- `SERVICE` - Backend service name for single-service mode, defaults to `service`
+- `PORT` - Backend service port for single-service mode, defaults to `80`
+- `SERVICE_1`, `SERVICE_2`, ... - Backend service names for multi-service mode
+- `PORT_1`, `PORT_2`, ... - Backend service ports for multi-service mode
+- `ROUTING_MODE` - Routing strategy for multi-service mode: `path` (default) or `subdomain`
 - `EMAIL` - Email for ACME account registration, defaults to `admin@dev.lan`
 - `SAN` - Subject Alternative Names (comma-separated), defaults to empty
+- `ENABLE_WEBSOCKET` - Enable WebSocket support in reverse proxy, defaults to `false` (set to `true` to enable)
 - `EXPIRY_DAYS_THRESHOLD` - Certificate renewal threshold in days, defaults to `30`
 - `RENEWAL_SECONDS` - Certificate check interval in seconds, defaults to `86400` (24 hours)
 - `CERT_PATH` - Certificate file path, defaults to `/etc/ssl/private/fullchain.pem`
@@ -92,6 +96,7 @@ services:
 - `CA_DIR_URL` - ACME CA directory URL, defaults to Let's Encrypt staging:
   - Staging: `https://acme-staging-v02.api.letsencrypt.org/directory`
   - Production: `https://acme-v02.api.letsencrypt.org/directory`
+- `ACME_CA_CERT_PATH` - Path to custom CA certificate for private ACME servers (see Custom CA section below)
 - `NO_HTTP_SERVICE` - Set to any value to disable the default reverse proxy configuration
 
 ## Configuration Methods
@@ -146,6 +151,184 @@ Mount a custom configuration to `/etc/nginx/conf.d/reverse-proxy.conf` and ensur
 ```nginx
 include /etc/nginx/conf.d/ssl.conf;
 ```
+
+## Multi-Service Configuration
+
+The reverse proxy supports proxying to multiple backend services with two routing modes:
+
+### Path-Based Routing (Default)
+
+Services are accessible via different paths on the same domain:
+- `example.com/` → `api:8080` (first service, default route)
+- `example.com/api/` → `api:8080`
+- `example.com/web/` → `web:3000`
+- `example.com/admin/` → `admin:9090`
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multi-service configuration
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: admin
+      PORT_3: 9090
+      # Path routing is default, but can be explicit
+      ROUTING_MODE: path
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+volumes:
+  ssl-certs:
+```
+
+### Subdomain-Based Routing
+
+Services are accessible via different subdomains:
+- `example.com` → `api:8080` (first service, default route)
+- `api.example.com` → `api:8080`
+- `web.example.com` → `web:3000`
+- `admin.example.com` → `admin:9090`
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      # Multi-service configuration
+      SERVICE_1: api
+      PORT_1: 8080
+      SERVICE_2: web
+      PORT_2: 3000
+      SERVICE_3: admin
+      PORT_3: 9090
+      # Enable subdomain routing
+      ROUTING_MODE: subdomain
+      # Certificate must include all subdomains
+      SAN: api.example.com,web.example.com,admin.example.com
+      # Or use a wildcard certificate
+      # SAN: "*.example.com"
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+volumes:
+  ssl-certs:
+```
+
+**Important for Subdomain Routing:**
+- Service names must be valid subdomain labels (no dots or underscores)
+- The certificate must include all subdomains either by:
+  - Listing each subdomain in the `SAN` environment variable
+  - Using a wildcard certificate (`*.example.com`)
+- The config generator will log all required domains when starting up
+- DNS must be configured to point all subdomains to the proxy server
+
+## WebSocket Support
+
+The reverse proxy can be configured to support WebSocket connections by setting the `ENABLE_WEBSOCKET` environment variable to `true`. This adds the necessary nginx headers and configuration for WebSocket proxying.
+
+### WebSocket Configuration
+
+When WebSocket support is enabled, the proxy automatically:
+- Adds the `Upgrade` and `Connection` headers for WebSocket handshake
+- Sets HTTP/1.1 for WebSocket compatibility
+- Configures appropriate timeouts for long-lived connections
+
+### Example with WebSocket
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: example.com
+      EMAIL: admin@example.com
+      SERVICE: websocket-app
+      PORT: 3000
+      ENABLE_WEBSOCKET: true
+      CA_DIR_URL: https://acme-v02.api.letsencrypt.org/directory
+    volumes:
+      - ssl-certs:/etc/ssl/private
+
+  websocket-app:
+    image: your-websocket-app:latest
+    expose:
+      - "3000"
+
+volumes:
+  ssl-certs:
+```
+
+### Testing WebSocket Connections
+
+Once configured, you can test WebSocket connections using:
+- Browser developer tools with WebSocket clients
+- Command-line tools like `wscat`
+- WebSocket testing websites
+
+The proxy will handle the WebSocket upgrade seamlessly while maintaining SSL/TLS encryption.
+
+## Using Custom CA Certificates
+
+When connecting to a private ACME server (like step-ca, smallstep, or Boulder), you may need to provide a custom CA certificate to establish trust. This is done by:
+
+1. **Mount the CA certificate** into the container:
+```yaml
+volumes:
+  - ./ca-cert.pem:/etc/ssl/certs/acme-ca.pem:ro
+```
+
+2. **Set the environment variable** to point to the certificate:
+```yaml
+environment:
+  ACME_CA_CERT_PATH: /etc/ssl/certs/acme-ca.pem
+  CA_DIR_URL: https://your-acme-server.internal/acme/directory
+```
+
+### Complete Example with Custom CA
+
+```yaml
+services:
+  reverse-proxy:
+    image: ghcr.io/nikosch86/acme-reverse-proxy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites:/etc/nginx/sites:ro
+      - ./ca-certificates/my-ca.pem:/etc/ssl/certs/acme-ca.pem:ro
+      - ssl-certs:/etc/ssl/private
+    environment:
+      DOMAIN: service.internal.company.com
+      EMAIL: admin@company.com
+      SERVICE: backend-service
+      PORT: 3000
+      CA_DIR_URL: https://ca.internal.company.com/acme/directory
+      ACME_CA_CERT_PATH: /etc/ssl/certs/acme-ca.pem
+
+volumes:
+  ssl-certs:
+```
+
+The ACME client will automatically use the provided CA certificate to validate the TLS connection to your private ACME server.
 
 ## How It Works
 

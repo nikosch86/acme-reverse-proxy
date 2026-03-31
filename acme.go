@@ -9,10 +9,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -28,25 +30,27 @@ import (
 )
 
 const (
-	challengeBasePath = "/usr/share/nginx/challenge/.well-known/acme-challenge"
-	defaultCADirURL   = "https://acme-staging-v02.api.letsencrypt.org/directory"
-	defaultEmail      = "notmy@mail.com"
-	defaultCertPath   = "/etc/ssl/private/fullchain.pem"
-	defaultKeyPath    = "/etc/ssl/private/key.pem"
-	filePerm          = 0644
-	dirPerm           = 0755
+	challengeBasePath          = "/usr/share/nginx/challenge/.well-known/acme-challenge"
+	defaultCADirURL            = "https://acme-staging-v02.api.letsencrypt.org/directory"
+	defaultEmail               = "notmy@mail.com"
+	defaultCertPath            = "/etc/ssl/private/fullchain.pem"
+	defaultKeyPath             = "/etc/ssl/private/key.pem"
+	filePerm                   = 0644
+	dirPerm                    = 0755
 	defaultExpiryDaysThreshold = 30
-	defaultSAN        = ""
+	defaultSAN                 = ""
+	defaultCACertPath          = ""
 )
 
 type Config struct {
-	Email    string
-	Domain   string
-	SAN      []string
-	CertPath string
-	KeyPath  string
-	CADirURL string
+	Email               string
+	Domain              string
+	SAN                 []string
+	CertPath            string
+	KeyPath             string
+	CADirURL            string
 	ExpiryDaysThreshold int
+	CACertPath          string
 }
 
 // MyUser implements the acme.User interface
@@ -69,6 +73,9 @@ func (u *MyUser) GetPrivateKey() crypto.PrivateKey {
 type customHTTP01Provider struct{}
 
 func (d *customHTTP01Provider) Present(domain, token, keyAuth string) error {
+	if token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	challengePath := filepath.Join(challengeBasePath, token)
 	err := os.MkdirAll(challengeBasePath, dirPerm)
 	if err != nil {
@@ -78,6 +85,9 @@ func (d *customHTTP01Provider) Present(domain, token, keyAuth string) error {
 }
 
 func (d *customHTTP01Provider) CleanUp(domain, token, keyAuth string) error {
+	if token == "" {
+		return fmt.Errorf("token cannot be empty")
+	}
 	challengePath := filepath.Join(challengeBasePath, token)
 	return os.Remove(challengePath)
 }
@@ -106,16 +116,17 @@ func loadConfig() *Config {
 	san := getEnvWithDefault("SAN", defaultSAN)
 	var sanSlice []string
 	if san != "" {
-        sanSlice = append(sanSlice, strings.Split(san, ",")...)
-    }
+		sanSlice = append(sanSlice, strings.Split(san, ",")...)
+	}
 	return &Config{
-		Email:    getEnvWithDefault("EMAIL", defaultEmail),
-		Domain:   os.Getenv("DOMAIN"),
-		SAN:      sanSlice,
-		CertPath: getEnvWithDefault("CERT_PATH", defaultCertPath),
-		KeyPath:  getEnvWithDefault("KEY_PATH", defaultKeyPath),
-		CADirURL: getEnvWithDefault("CA_DIR_URL", defaultCADirURL),
+		Email:               getEnvWithDefault("EMAIL", defaultEmail),
+		Domain:              os.Getenv("DOMAIN"),
+		SAN:                 sanSlice,
+		CertPath:            getEnvWithDefault("CERT_PATH", defaultCertPath),
+		KeyPath:             getEnvWithDefault("KEY_PATH", defaultKeyPath),
+		CADirURL:            getEnvWithDefault("CA_DIR_URL", defaultCADirURL),
 		ExpiryDaysThreshold: expiryDaysThreshold,
+		CACertPath:          getEnvWithDefault("ACME_CA_CERT_PATH", defaultCACertPath),
 	}
 }
 
@@ -159,8 +170,8 @@ func run(ctx context.Context, cfg *Config) error {
 }
 
 func getDomains(cfg *Config) []string {
-    domains := []string{cfg.Domain}
-    return append(domains, cfg.SAN...)
+	domains := []string{cfg.Domain}
+	return append(domains, cfg.SAN...)
 }
 
 func checkCertificateExpiration(certPath string, domains []string, expiryDaysThreshold int) (bool, error) {
@@ -183,12 +194,12 @@ func checkCertificateExpiration(certPath string, domains []string, expiryDaysThr
 	}
 
 	// Check if the certificate is valid for all required domains
-    for _, domain := range domains {
-        if err := cert.VerifyHostname(domain); err != nil {
-            log.Printf("Certificate is not valid for domain %s: %v", domain, err)
-            return true, nil // Certificate needs to be renewed
-        }
-    }
+	for _, domain := range domains {
+		if err := cert.VerifyHostname(domain); err != nil {
+			log.Printf("Certificate is not valid for domain %s: %v", domain, err)
+			return true, nil // Certificate needs to be renewed
+		}
+	}
 
 	daysUntilExpiry := int(time.Until(cert.NotAfter).Hours() / 24)
 	log.Printf("Certificate expires in %d days", daysUntilExpiry)
@@ -210,6 +221,35 @@ func setupACMEClient(cfg *Config) (*lego.Client, error) {
 	config := lego.NewConfig(user)
 	config.CADirURL = cfg.CADirURL
 
+	// Configure custom CA certificate if provided
+	if cfg.CACertPath != "" {
+		caCert, err := os.ReadFile(cfg.CACertPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading CA certificate from %s: %w", cfg.CACertPath, err)
+		}
+
+		// Create a certificate pool with the custom CA
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("parsing CA certificate from %s", cfg.CACertPath)
+		}
+
+		// Create custom TLS config
+		tlsConfig := &tls.Config{
+			RootCAs: caCertPool,
+		}
+
+		// Create custom HTTP client with the TLS config
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+			},
+		}
+
+		config.HTTPClient = httpClient
+		log.Printf("Using custom CA certificate from %s", cfg.CACertPath)
+	}
+
 	client, err := lego.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("creating ACME client: %w", err)
@@ -230,11 +270,11 @@ func setupACMEClient(cfg *Config) (*lego.Client, error) {
 }
 
 func obtainCertificate(ctx context.Context, client *lego.Client, domains []string) (*certificate.Resource, error) {
-    request := certificate.ObtainRequest{
-        Domains: domains,
-        Bundle:  true,
-    }
-    return client.Certificate.Obtain(request)
+	request := certificate.ObtainRequest{
+		Domains: domains,
+		Bundle:  true,
+	}
+	return client.Certificate.Obtain(request)
 }
 
 func saveCertificateAndKey(cert *certificate.Resource, certPath, keyPath string) error {
