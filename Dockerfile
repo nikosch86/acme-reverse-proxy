@@ -10,7 +10,7 @@ RUN go test || true
 RUN go build -o acme .
 RUN go build -o generate_nginx_config cmd_generate_nginx_config.go
 
-FROM nginx:1.29-alpine
+FROM nginx:1.31-alpine
 
 WORKDIR /root/
 
