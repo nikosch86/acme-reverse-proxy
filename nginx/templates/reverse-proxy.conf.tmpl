@@ -9,6 +9,11 @@ server {
 
     server_name {{.Name}}.{{$.Domain}};
 
+    {{- if .AuthFile }}
+    auth_basic "Restricted Access";
+    auth_basic_user_file {{.AuthFile}};
+    {{- end }}
+
     location / {
         proxy_pass http://{{.Name}}:{{.Port}};
         proxy_set_header Host $host;
@@ -33,6 +38,11 @@ server {
     include /etc/nginx/conf.d/ssl.conf;
 
     server_name {{.Domain}};
+
+    {{- if (index .Services 0).AuthFile }}
+    auth_basic "Restricted Access";
+    auth_basic_user_file {{(index .Services 0).AuthFile}};
+    {{- end }}
 
     location / {
         proxy_pass http://{{(index .Services 0).Name}}:{{(index .Services 0).Port}};
@@ -62,6 +72,10 @@ server {
     {{- range .Services }}
     
     location /{{.Name}}/ {
+        {{- if .AuthFile }}
+        auth_basic "Restricted Access";
+        auth_basic_user_file {{.AuthFile}};
+        {{- end }}
         proxy_pass http://{{.Name}}:{{.Port}}/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -78,6 +92,10 @@ server {
     {{- if .Services }}
     # Default location (root path) routes to first service
     location / {
+        {{- if (index .Services 0).AuthFile }}
+        auth_basic "Restricted Access";
+        auth_basic_user_file {{(index .Services 0).AuthFile}};
+        {{- end }}
         proxy_pass http://{{(index .Services 0).Name}}:{{(index .Services 0).Port}};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
