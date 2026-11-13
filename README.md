@@ -483,7 +483,7 @@ The ACME client will automatically use the provided CA certificate to validate t
 ## Development
 
 ### Prerequisites
-- Go 1.24+
+- Go 1.27+
 - Docker & Docker Compose
 
 ### Build and Test
