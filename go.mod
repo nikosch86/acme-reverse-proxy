@@ -1,6 +1,6 @@
 module acme
 
-go 1.26.6
+go 1.27.4
 
 require github.com/go-acme/lego/v4 v4.35.2
 
