@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -10,7 +10,7 @@ RUN go test || true
 RUN go build -o acme .
 RUN go build -o generate_nginx_config cmd_generate_nginx_config.go
 
-FROM nginx:1.31-alpine
+FROM nginx:1.31.9-alpine
 
 # Install apache2-utils for htpasswd command
 RUN apk add --no-cache apache2-utils
